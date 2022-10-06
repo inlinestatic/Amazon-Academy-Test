@@ -10,8 +10,21 @@
 #include <math.h>
 using namespace std;
 
+
+template <class _RanIt>
+void countImbalance(const _RanIt& sorted_rank, int& imbalance)
+{
+    int prev = INT_MAX;
+    for (auto k : sorted_rank)
+    {
+        if (k - prev > 1)
+            imbalance++;
+        prev = k;
+    }
+}
+
 //group sliding algorithm
-int findTotalImbalance(const vector<int>& input)
+int findTotalImbalance_AsPerTask(const vector<int>& input)
 {
     if (input.size() < 2)
     {
@@ -30,18 +43,14 @@ int findTotalImbalance(const vector<int>& input)
                 sorted_rank.push_back(input[j + k]);
             }
             sort(sorted_rank.begin(), sorted_rank.end());// q-sort
-            for (int k = 1; k < i; k++)
-            {
-                if (sorted_rank[k] - sorted_rank[k - 1] > 1)//check group for imbalance
-                    imbalance++;
-            }
+            countImbalance(sorted_rank, imbalance);
         }
     }
     return imbalance;
 }
 
 //increment group sizing algorithm
-int findTotalImbalance2(const vector<int>& input, int threadNum)
+int findTotalImbalance_QuickSort(const vector<int>& input)
 {
     if (input.size() < 2)
     {
@@ -49,7 +58,6 @@ int findTotalImbalance2(const vector<int>& input, int threadNum)
     }
 
     int imbalance = 0;
-
     for (int i = 0; i < input.size()-1; i++)
     {
         vector<int> sorted_rank;
@@ -57,29 +65,154 @@ int findTotalImbalance2(const vector<int>& input, int threadNum)
         {
             sorted_rank.push_back(input[j]);
             sort(sorted_rank.begin(), sorted_rank.end());
-            int prev = INT_MAX;
-            for (int k : sorted_rank)
+            countImbalance(sorted_rank, imbalance);
+        }
+    }
+    return imbalance;
+}
+
+//Sort while inserting
+int findTotalImbalance_InsertSort(const vector<int>& input)
+{
+    if (input.size() < 2)
+    {
+        return 0;
+    }
+
+    int imbalance = 0;
+    for (int i = 0; i < input.size()-1; i++)
+    {
+        list<int> sorted_rank;
+        int position = 0;
+        sorted_rank.push_back(input[i]);
+
+        for (int j = i+1; j < input.size(); j++)
+        {
+            position = 0;
+            auto front = sorted_rank.front();
+            auto back = sorted_rank.back();
+            if (input[j] > back) // add to end
             {
-                if (k - prev > 1)
-                    imbalance++;
-                prev = k;
+                sorted_rank.push_back(input[j]);
+                countImbalance(sorted_rank, imbalance);
+            }
+            else if (input[j] <= front)// add begin
+            {
+                sorted_rank.push_front(input[j]);
+                countImbalance(sorted_rank, imbalance);
+            }
+            else // somewhere middle
+            {
+                auto it = sorted_rank.begin();
+                int div = sorted_rank.size()/2;
+                bool right = true;
+                while(div>=1) 
+                { 
+                    int prev = it._Ptr->_Myval;
+                    int next = (++it)._Ptr->_Myval;
+                    if (next < input[j])
+                    {
+                        for (int k = 0; k < div; k++)
+                            it = it++;
+                        div = std::ceil((double)div / 2);
+                    }
+                    else if (prev > input[j])
+                    {
+                        for (int k = 0; k < div; k++)
+                            it = it--;
+                        div = std::ceil((double)div / 2);
+                    }
+                    else
+                    {
+                        sorted_rank.insert(it, input[j]);
+                        countImbalance(sorted_rank, imbalance);
+                        break;
+                    }
+                }
             }
         }
     }
     return imbalance;
 }
 
-
-//increment group sizing algorithm parallel 
-int findTotalImbalanceParallel(const vector<int>& input)
+//lazy algorithm parallel 
+int findTotalImbalanceParallel(const vector<int>& input, short threads)
 {
-    //TODO for large group sizes if needed
-    return 0;
+    if (input.size() < 2)
+    {
+        return 0;
+    }
+
+    int imbalance = 0;//atomic datatype
+    std::vector<std::thread> workers;
+    for (int k = 0; k < threads; k++) 
+    {
+        workers.push_back(std::thread([&input,&k,&imbalance]()
+        {
+            for (int i = k; i < input.size() - 1; i++)
+            {
+                list<int> sorted_rank;
+                int position = 0;
+                sorted_rank.push_back(input[i]);
+
+                for (int j = i + 1; j < input.size(); j++)
+                {
+                    position = 0;
+                    auto front = sorted_rank.front();
+                    auto back = sorted_rank.back();
+                    if (input[j] > back) // add to end
+                    {
+                        sorted_rank.push_back(input[j]);
+                        countImbalance(sorted_rank, imbalance);
+                    }
+                    else if (input[j] <= front)// add begin
+                    {
+                        sorted_rank.push_front(input[j]);
+                        countImbalance(sorted_rank, imbalance);
+                    }
+                    else // somewhere middle
+                    {
+                        auto it = sorted_rank.begin();
+                        int div = sorted_rank.size() / 2;
+                        bool right = true;
+                        while (div >= 1)
+                        {
+                            int prev = it._Ptr->_Myval;
+                            int next = (++it)._Ptr->_Myval;
+                            if (next < input[j])
+                            {
+                                for (int k = 0; k < div; k++)
+                                    it = it++;
+                                div = std::ceil((double)div / 2);
+                            }
+                            else if (prev > input[j])
+                            {
+                                for (int k = 0; k < div; k++)
+                                    it = it--;
+                                div = std::ceil((double)div / 2);
+                            }
+                            else
+                            {
+                                sorted_rank.insert(it, input[j]);
+                                countImbalance(sorted_rank, imbalance);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }));
+    }
+    std::for_each(workers.begin(), workers.end(), [](std::thread& t)
+    {
+        t.join();
+    });
+    return imbalance;
 }
 
 int main()
 {
-    vector<int> groupInit{ 4,1,3,2,5,7,9,6,8, 10 };
+    vector<int> groupInit{ 4,1,3,2,5,7,9,6,8,10 };
     vector<int> group;
     for (int i = 1; i <= 1000; i++)//Unique ranks
     {
@@ -88,31 +221,35 @@ int main()
     }
 
     auto start = std::chrono::system_clock::now();
-    int imbalance = findTotalImbalance(group);
+    int imbalance = findTotalImbalance_AsPerTask(group);
     auto end = std::chrono::system_clock::now();
     std::chrono::duration<double> elapsed_seconds = end - start;
     std::time_t end_time = std::chrono::system_clock::to_time_t(end);
-    std::cout << "findTotalImbalance elapsed_seconds: " << elapsed_seconds.count() << std::endl;
-    std::cout << "findTotalImbalance imbalance: " << imbalance <<endl;
+    std::cout << "findTotalImbalance_AsPerTask elapsed_seconds: " << elapsed_seconds.count() << std::endl;
+    std::cout << "findTotalImbalance_AsPerTask imbalance: " << imbalance <<endl;
 
     start = std::chrono::system_clock::now();
-    imbalance = findTotalImbalance2(group);
+    imbalance = findTotalImbalance_QuickSort(group);
     end = std::chrono::system_clock::now();
     elapsed_seconds = end - start;
     end_time = std::chrono::system_clock::to_time_t(end);
-    std::cout << "findTotalImbalance2 elapsed_seconds: " << elapsed_seconds.count() << std::endl;
-    std::cout << "findTotalImbalance2 imbalance: " << imbalance << endl;
+    std::cout << "findTotalImbalance_QuickSort elapsed_seconds: " << elapsed_seconds.count() << std::endl;
+    std::cout << "findTotalImbalance_QuickSort imbalance: " << imbalance << endl;
 
+    start = std::chrono::system_clock::now();
+    imbalance = findTotalImbalance_InsertSort(group);
+    end = std::chrono::system_clock::now();
+    elapsed_seconds = end - start;
+    end_time = std::chrono::system_clock::to_time_t(end);
+    std::cout << "findTotalImbalance_InsertSort elapsed_seconds: " << elapsed_seconds.count() << std::endl;
+    std::cout << "findTotalImbalance_InsertSort imbalance: " << imbalance << endl;
+
+    start = std::chrono::system_clock::now();
+    imbalance = findTotalImbalanceParallel(group, 3);
+    end = std::chrono::system_clock::now();
+    elapsed_seconds = end - start;
+    end_time = std::chrono::system_clock::to_time_t(end);
+    std::cout << "findTotalImbalanceParallel elapsed_seconds: " << elapsed_seconds.count() << std::endl;
+    std::cout << "findTotalImbalanceParallel imbalance: " << imbalance << endl;
     getchar();
 }
-
-// Run program: Ctrl + F5 or Debug > Start Without Debugging menu
-// Debug program: F5 or Debug > Start Debugging menu
-
-// Tips for Getting Started: 
-//   1. Use the Solution Explorer window to add/manage files
-//   2. Use the Team Explorer window to connect to source control
-//   3. Use the Output window to see build output and other messages
-//   4. Use the Error List window to view errors
-//   5. Go to Project > Add New Item to create new code files, or Project > Add Existing Item to add existing code files to the project
-//   6. In the future, to open this project again, go to File > Open > Project and select the .sln file
