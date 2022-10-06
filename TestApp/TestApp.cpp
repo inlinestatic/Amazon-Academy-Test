@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <chrono>
 #include <thread>
+#include <list>
+#include <math.h>
 using namespace std;
 
 //group sliding algorithm
@@ -39,7 +41,7 @@ int findTotalImbalance(const vector<int>& input)
 }
 
 //increment group sizing algorithm
-int findTotalImbalance2(const vector<int>& input)
+int findTotalImbalance2(const vector<int>& input, int threadNum)
 {
     if (input.size() < 2)
     {
@@ -47,7 +49,8 @@ int findTotalImbalance2(const vector<int>& input)
     }
 
     int imbalance = 0;
-    for (int i = 0; i <= input.size(); i++)
+
+    for (int i = 0; i < input.size()-1; i++)
     {
         vector<int> sorted_rank;
         for (int j = i; j < input.size(); j++)
@@ -66,59 +69,26 @@ int findTotalImbalance2(const vector<int>& input)
     return imbalance;
 }
 
+
 //increment group sizing algorithm parallel 
 int findTotalImbalanceParallel(const vector<int>& input)
 {
-    if (input.size() < 2)
-    {
-        return 0;
-    }
-
-    int imbalance = 0;
-    std::vector<thread> threads;
-    int maxThreads = 4;
-    for (int c = 0; c < maxThreads; c++)
-    {
-        threads.push_back(std::thread([&imbalance, &input, &c]() 
-            {
-                for (int i = c; i <= input.size()/ 4; i++)
-                {
-                    vector<int> sorted_rank;
-                    for (int j = i; j < input.size(); j++)
-                    {
-                        sorted_rank.push_back(input[j]);
-                        sort(sorted_rank.begin(), sorted_rank.end());
-                        int prev = INT_MAX;
-                        for (int k : sorted_rank)
-                        {
-                            if (k - prev > 1)
-                                imbalance++;
-                            prev = k;
-                        }
-                    }
-                }
-            }));
-    }
-    for (auto& thread : threads) 
-    {
-        thread.join();
-    }
-    return imbalance;
+    //TODO for large group sizes if needed
+    return 0;
 }
 
 int main()
 {
-    vector<int> group{4,1,3,2};
-    int imbalance = findTotalImbalance(group);
-    std::cout << "{4,1,3,2} " << imbalance<< endl;
-    group.clear();
-    for (int i = 0; i < 1000; i++)
+    vector<int> groupInit{ 4,1,3,2,5,7,9,6,8, 10 };
+    vector<int> group;
+    for (int i = 1; i <= 1000; i++)//Unique ranks
     {
-        group.push_back(rand()%10);
+        for(auto j: groupInit)
+            group.push_back(j*i);
     }
 
     auto start = std::chrono::system_clock::now();
-    imbalance = findTotalImbalance(group);
+    int imbalance = findTotalImbalance(group);
     auto end = std::chrono::system_clock::now();
     std::chrono::duration<double> elapsed_seconds = end - start;
     std::time_t end_time = std::chrono::system_clock::to_time_t(end);
@@ -133,13 +103,6 @@ int main()
     std::cout << "findTotalImbalance2 elapsed_seconds: " << elapsed_seconds.count() << std::endl;
     std::cout << "findTotalImbalance2 imbalance: " << imbalance << endl;
 
-    //start = std::chrono::system_clock::now();
-    //imbalance = findTotalImbalanceParallel(group);
-    //end = std::chrono::system_clock::now();
-    //elapsed_seconds = end - start;
-    //end_time = std::chrono::system_clock::to_time_t(end);
-    //std::cout << "findTotalImbalanceParallel elapsed_seconds: " << elapsed_seconds.count() << std::endl;
-    //std::cout << "findTotalImbalanceParallel imbalance: " << imbalance;
     getchar();
 }
 
