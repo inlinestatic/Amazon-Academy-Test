@@ -7,7 +7,7 @@
 #include <chrono>
 #include <thread>
 #include <list>
-#include <math.h>
+
 using namespace std;
 
 
@@ -96,12 +96,12 @@ int findTotalImbalance_InsertSort(const vector<int>& input)
                 sorted_rank.push_back(input[j]);
                 countImbalance(sorted_rank, imbalance);
             }
-            else if (input[j] <= front)// add begin
+            else if (input[j] <= front)// add to begin
             {
                 sorted_rank.push_front(input[j]);
                 countImbalance(sorted_rank, imbalance);
             }
-            else // somewhere middle
+            else // insert somewhere in the middle
             {
                 auto it = sorted_rank.begin();
                 int div = sorted_rank.size()/2;
@@ -135,7 +135,6 @@ int findTotalImbalance_InsertSort(const vector<int>& input)
     return imbalance;
 }
 
-//lazy algorithm parallel 
 int findTotalImbalanceParallel(const vector<int>& input, short threads)
 {
     if (input.size() < 2)
@@ -145,17 +144,32 @@ int findTotalImbalanceParallel(const vector<int>& input, short threads)
 
     int imbalance = 0;//atomic datatype
     std::vector<std::thread> workers;
-    for (int k = 0; k < threads; k++) 
+    int* imbalances = new int[threads];
+    for (int k = 0; k < threads; k++)
     {
-        workers.push_back(std::thread([&input,&k,&imbalance]()
+        imbalances[k] = 0;
+    }
+    for (int k = 1; k <= threads; k++)
+    {
+        int* im = &imbalances[k - 1];
+        //lampda thread does not seem to execute atomic operations for value incrementation safely
+        //using separate memory for each thread for calculating imbalance
+        //Not going to go into std::promise and std::future or std::atomic here
+        //locks and mutexes used for more complex data types then int
+        workers.push_back(std::thread([&input, k, threads, im]()
         {
-            for (int i = k; i < input.size() - 1; i++)
+            bool invert = false;
+            int iter = 0;
+            //This for loop update rule implements load balancing for each thread
+            for (int i = k; i <= input.size(); i = ((invert == false) ? (iter * threads + k) : ((iter + 1) * threads + 1 - k)))
             {
+                invert != invert;
+                iter++;
                 list<int> sorted_rank;
                 int position = 0;
-                sorted_rank.push_back(input[i]);
+                sorted_rank.push_back(input[i-1]);
 
-                for (int j = i + 1; j < input.size(); j++)
+                for (int j = i; j < input.size(); j++)
                 {
                     position = 0;
                     auto front = sorted_rank.front();
@@ -163,14 +177,14 @@ int findTotalImbalanceParallel(const vector<int>& input, short threads)
                     if (input[j] > back) // add to end
                     {
                         sorted_rank.push_back(input[j]);
-                        countImbalance(sorted_rank, imbalance);
+                        countImbalance(sorted_rank, *im);
                     }
-                    else if (input[j] <= front)// add begin
+                    else if (input[j] <= front)// add to begin
                     {
                         sorted_rank.push_front(input[j]);
-                        countImbalance(sorted_rank, imbalance);
+                        countImbalance(sorted_rank, *im);
                     }
-                    else // somewhere middle
+                    else // insert somewhere in the middle
                     {
                         auto it = sorted_rank.begin();
                         int div = sorted_rank.size() / 2;
@@ -194,7 +208,7 @@ int findTotalImbalanceParallel(const vector<int>& input, short threads)
                             else
                             {
                                 sorted_rank.insert(it, input[j]);
-                                countImbalance(sorted_rank, imbalance);
+                                countImbalance(sorted_rank, *im);
                                 break;
                             }
                         }
@@ -207,6 +221,11 @@ int findTotalImbalanceParallel(const vector<int>& input, short threads)
     {
         t.join();
     });
+    for (int k = 0; k < threads; k++)
+    {
+        imbalance+=imbalances[k];
+    }
+    delete[]imbalances;
     return imbalance;
 }
 
@@ -214,7 +233,10 @@ int main()
 {
     vector<int> groupInit{ 4,1,3,2,5,7,9,6,8,10 };
     vector<int> group;
-    for (int i = 1; i <= 1000; i++)//Unique ranks
+    int decade = 1;
+    std::cout << "Input number of sudent decades" << endl;
+    cin >> decade;
+    for (int i = 1; i <= decade; i++)//Unique ranks
     {
         for(auto j: groupInit)
             group.push_back(j*i);
@@ -245,11 +267,11 @@ int main()
     std::cout << "findTotalImbalance_InsertSort imbalance: " << imbalance << endl;
 
     start = std::chrono::system_clock::now();
-    imbalance = findTotalImbalanceParallel(group, 3);
+    imbalance = findTotalImbalanceParallel(group, 4);
     end = std::chrono::system_clock::now();
     elapsed_seconds = end - start;
     end_time = std::chrono::system_clock::to_time_t(end);
     std::cout << "findTotalImbalanceParallel elapsed_seconds: " << elapsed_seconds.count() << std::endl;
     std::cout << "findTotalImbalanceParallel imbalance: " << imbalance << endl;
-    getchar();
+    cin >> decade;
 }
